@@ -27,6 +27,11 @@ jobs:
           cp index.html robots.txt sitemap.xml CNAME og-image.png dist/
           esbuild draw.js --bundle=false --minify --outfile=dist/draw.js
           esbuild draw.css --bundle=false --minify --outfile=dist/draw.css
+      - name: Add cache busting query params
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          sed -i "s|href=\"draw.css\"|href=\"draw.css?v=$COMMIT_HASH\"|g" dist/index.html
+          sed -i "s|src=\"draw.js\"|src=\"draw.js?v=$COMMIT_HASH\"|g" dist/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: 'dist'
