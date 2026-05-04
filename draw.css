@@ -31,7 +31,7 @@
       border:1px solid rgba(0,0,0,0.14);border-radius:6px;
       background:transparent;color:#66758a;
       font-size:11.5px;font-weight:500;
-      cursor:pointer;user-select:none;-webkit-user-select:none;
+      cursor:pointer;user-select:none;
       transition:background 70ms,color 70ms,border-color 70ms;
     }
     .hd-btn:hover{background:rgba(0,0,0,0.05);color:#1a1a1a}
@@ -66,7 +66,7 @@
       border:1px solid rgba(0,0,0,0.14);border-radius:7px;
       background:transparent;color:#1a1a1a;
       font-size:12.5px;font-weight:500;
-      cursor:pointer;user-select:none;-webkit-user-select:none;
+      cursor:pointer;user-select:none;
       display:inline-flex;align-items:center;justify-content:center;
       transition:background 70ms,border-color 70ms,color 70ms;flex-shrink:0;
     }

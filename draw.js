@@ -339,40 +339,34 @@
       }, 80);
     });
 
-    // Toolbar — tools
-    const toolBtns = document.querySelectorAll('[data-tool]');
-    toolBtns.forEach(b => {
-      b.addEventListener('click', () => {
-        toolBtns.forEach(x => x.classList.remove('on'));
+    function wireGroup(sel, onPick) {
+      const bs = document.querySelectorAll(sel);
+      bs.forEach(b => b.addEventListener('click', () => {
+        bs.forEach(x => x.classList.remove('on'));
         b.classList.add('on');
-        S.tool = b.dataset.tool;
-        $('fsz').classList.toggle('dim', S.tool !== 'text');
-        wrap.classList.toggle('erasing', S.tool === 'eraser');
-        if (S.tool !== 'text') commitText();
-      });
+        onPick(b);
+      }));
+      return bs;
+    }
+
+    // Toolbar — tools
+    wireGroup('[data-tool]', b => {
+      S.tool = b.dataset.tool;
+      $('fsz').classList.toggle('dim', S.tool !== 'text');
+      wrap.classList.toggle('erasing', S.tool === 'eraser');
+      if (S.tool !== 'text') commitText();
     });
 
     // Toolbar — colours
-    const swBtns = document.querySelectorAll('.sw');
-    swBtns.forEach(b => {
-      b.style.background = b.dataset.c;
-      b.addEventListener('click', () => {
-        swBtns.forEach(x => x.classList.remove('on'));
-        b.classList.add('on');
-        S.color = b.dataset.c;
-        if (ti.style.display !== 'none') ti.style.color = S.color;
-      });
-    });
+    wireGroup('.sw', b => {
+      S.color = b.dataset.c;
+      if (ti.style.display !== 'none') ti.style.color = S.color;
+    }).forEach(b => b.style.background = b.dataset.c);
 
     // Toolbar — font sizes
-    const fsBtns = document.querySelectorAll('[data-fs]');
-    fsBtns.forEach(b => {
-      b.addEventListener('click', () => {
-        fsBtns.forEach(x => x.classList.remove('on'));
-        b.classList.add('on');
-        S.fs = +b.dataset.fs;
-        if (ti.style.display !== 'none') ti.style.fontSize = S.fs + 'px';
-      });
+    wireGroup('[data-fs]', b => {
+      S.fs = +b.dataset.fs;
+      if (ti.style.display !== 'none') ti.style.fontSize = S.fs + 'px';
     });
 
     // Reset

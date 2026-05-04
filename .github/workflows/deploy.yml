@@ -32,6 +32,17 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD)
           sed -i "s|href=\"draw.css\"|href=\"draw.css?v=$COMMIT_HASH\"|g" dist/index.html
           sed -i "s|src=\"draw.js\"|src=\"draw.js?v=$COMMIT_HASH\"|g" dist/index.html
+      - name: Minify HTML
+        run: |
+          npx -y html-minifier-terser dist/index.html \
+            --collapse-whitespace \
+            --remove-comments \
+            --remove-attribute-quotes \
+            --remove-redundant-attributes \
+            --use-short-doctype \
+            --minify-css true \
+            --minify-js true \
+            -o dist/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: 'dist'
