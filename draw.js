@@ -378,10 +378,7 @@
     // Reset
     $('rst').addEventListener('click', () => {
       if (shareActive) { $('rm').style.display = 'flex'; return; }
-      commitText();
-      db = null;
-      bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H);
-      px.clearRect(0, 0, WORLD_W, WORLD_H);
+      window.location.reload();
     });
 
     // Performance metrics
