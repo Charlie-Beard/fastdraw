@@ -16,7 +16,23 @@
     function minScale() {
       const w = window.innerWidth;
       const h = window.innerHeight - hdH - tbH;
-      return Math.min(0.98 * w / WORLD_W, 0.98 * h / WORLD_H);
+      return Math.max(w / WORLD_W, h / WORLD_H);
+    }
+
+    function fitToContent(bounds) {
+      if (!bounds) { fitToView(); return; }
+      const pad = 60;
+      const cw = bounds.x2 - bounds.x1 + 2 * pad;
+      const ch = bounds.y2 - bounds.y1 + 2 * pad;
+      const availW = window.innerWidth;
+      const availH = window.innerHeight - hdH - tbH;
+      s = Math.min(availW / cw, availH / ch, MAX_SCALE);
+      s = Math.max(s, minScale());
+      const cx = (bounds.x1 + bounds.x2) / 2;
+      const cy = (bounds.y1 + bounds.y2) / 2;
+      ox = availW / 2 - cx * s;
+      oy = hdH + availH / 2 - cy * s;
+      updateTransform();
     }
 
     function fitToView() {
@@ -489,7 +505,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       peerConns.push(conn);
       conn.on('open', () => {
         // Sync the current canvas state to the new joiner
-        conn.send({type:'init', canvas: base.toDataURL('image/jpeg', 0.85)});
+        conn.send({type:'init', canvas: base.toDataURL('image/jpeg', 0.85), db});
         updateCount();
       });
       conn.on('data', data => {
@@ -551,7 +567,11 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
           hostConn.on('data', data => {
             if (data.type === 'init') {
               const img = new Image();
-              img.onload = () => bx.drawImage(img, 0, 0, WORLD_W, WORLD_H);
+              img.onload = () => {
+                bx.drawImage(img, 0, 0, WORLD_W, WORLD_H);
+                if (data.db) db = data.db;
+                fitToContent(data.db);
+              };
               img.src = data.canvas;
             } else if (data.type === 'draw') {
               applyOp(data.op);
