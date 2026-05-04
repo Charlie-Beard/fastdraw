@@ -16,15 +16,7 @@
   <meta name="twitter:title" content="FastDraw — Free Online Drawing App">
   <meta name="twitter:description" content="A fast, free online drawing app. Draw with pen, shapes, and text. Share live with a link.">
   <meta name="twitter:image" content="https://fastdraw.online/og-image.png">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self';
-             script-src 'self' https://unpkg.com;
-             style-src 'self' 'unsafe-inline';
-             connect-src 'self' https://*.peerjs.com wss://*.peerjs.com;
-             img-src 'self' data: blob:;
-             font-src 'self';
-             frame-src 'none';
-             object-src 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.peerjs.com wss://*.peerjs.com; img-src 'self' data: blob:; font-src 'self'; frame-src 'none'; object-src 'none';">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"FastDraw","url":"https://fastdraw.online","description":"A fast, free online drawing app. Draw with pen, shapes, and text. Share live sessions with a link.","applicationCategory":"DesignApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
   <link rel="stylesheet" href="draw.css">
 </head>
@@ -52,7 +44,6 @@
     <div id="stage">
       <canvas id="base"></canvas>
       <canvas id="preview"></canvas>
-      <div id="cap"></div>
     </div>
   </div>
 
@@ -89,7 +80,7 @@
     </div>
   </div>
 
-  <input id="ti" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <input id="ti" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
 
   <!-- Share modal -->
   <div id="sm">
@@ -99,12 +90,12 @@
         <button id="sm-close">×</button>
       </div>
       <p id="sm-body">Your browser must stay open. Closing this tab ends the session for everyone.</p>
-      <p id="sm-conn" style="display:none">Connecting…</p>
-      <div id="sm-url-row" style="display:none">
-        <input id="sm-url" type="text" readonly>
+      <p id="sm-conn">Connecting…</p>
+      <div id="sm-url-row">
+        <input id="sm-url" readonly>
         <button id="sm-copy" class="m-btn">Copy</button>
       </div>
-      <p id="sm-err" style="display:none">Could not connect. Check your internet connection.</p>
+      <p id="sm-err">Could not connect. Check your internet connection.</p>
       <div id="sm-btns">
         <button id="sm-cancel" class="m-btn">Cancel</button>
         <button id="sm-go" class="m-btn">I understand</button>

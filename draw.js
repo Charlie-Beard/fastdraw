@@ -2,7 +2,6 @@
     const $=id=>document.getElementById(id);
     const base = $('base');
     const prev = $('preview');
-    const cap  = $('cap');
     const wrap = $('wrap');
     const ti   = $('ti');
     const bx   = base.getContext('2d', { alpha: false });
@@ -96,13 +95,13 @@
       return { x: (e.clientX - ox) / s, y: (e.clientY - oy) / s };
     }
 
-    function applyStyle(ctx) {
-      ctx.strokeStyle = S.color;
-      ctx.fillStyle   = S.color;
-      ctx.lineWidth   = S.lw;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
+    function applyStyle(ctx, color=S.color, lw=S.lw) {
+      ctx.strokeStyle = ctx.fillStyle = color;
+      ctx.lineWidth   = lw;
+      ctx.lineCap = ctx.lineJoin = 'round';
     }
+
+    function erase(x, y, r) { bx.fillStyle='#fff'; bx.beginPath(); bx.arc(x,y,r,0,Math.PI*2); bx.fill(); }
 
     function chaikin(p, n) {
       if (p.length < 3) return p;
@@ -163,8 +162,7 @@
         px.moveTo(x, y);
       } else if (S.tool === 'eraser') {
         pts = [{x, y}];
-        bx.fillStyle = '#fff';
-        bx.beginPath(); bx.arc(x, y, ERASER_R, 0, Math.PI*2); bx.fill();
+        erase(x, y, ERASER_R);
       }
     });
 
@@ -208,8 +206,7 @@
         const dx = x - l.x, dy = y - l.y;
         if (dx*dx + dy*dy > 4) {
           pts.push({x, y});
-          bx.fillStyle = '#fff';
-          bx.beginPath(); bx.arc(x, y, ERASER_R, 0, Math.PI*2); bx.fill();
+          erase(x, y, ERASER_R);
         }
       } else {
         rx = x; ry = y;
@@ -236,8 +233,7 @@
 
       if (S.tool === 'eraser') {
         pts.push({x, y});
-        bx.fillStyle = '#fff';
-        bx.beginPath(); bx.arc(x, y, ERASER_R, 0, Math.PI*2); bx.fill();
+        erase(x, y, ERASER_R);
         if (shareActive) shareOp({type:'eraser', pts, r:ERASER_R});
         return;
       }
@@ -342,8 +338,8 @@
 
     // Toolbar — colours
     const swBtns = document.querySelectorAll('.sw');
-    swBtns.forEach(b => b.style.background = b.dataset.c);
     swBtns.forEach(b => {
+      b.style.background = b.dataset.c;
       b.addEventListener('click', () => {
         swBtns.forEach(x => x.classList.remove('on'));
         b.classList.add('on');
@@ -443,18 +439,14 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
     // Apply a received draw operation to the base canvas
     function applyOp(op) {
       if (op.type !== 'reset' && op.type !== 'eraser') expandOpBounds(op);
-      bx.strokeStyle = op.color;
-      bx.fillStyle   = op.color;
-      bx.lineWidth   = op.lw;
-      bx.lineCap     = 'round';
-      bx.lineJoin    = 'round';
+      applyStyle(bx, op.color, op.lw);
       if      (op.type === 'pen')   polyline(bx, chaikin(op.pts, op.iters));
       else if (op.type === 'dot')   { bx.beginPath(); bx.arc(op.x, op.y, op.lw/2, 0, Math.PI*2); bx.fill(); }
       else if (op.type === 'rect')  drawRect(bx, op.x0, op.y0, op.x1, op.y1);
       else if (op.type === 'oval')  drawOval(bx, op.x0, op.y0, op.x1, op.y1);
       else if (op.type === 'text')  { bx.font = op.fs + FONT_STACK; bx.fillText(op.text, op.x, op.y); }
       else if (op.type === 'reset')  { bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H); db = null; }
-      else if (op.type === 'eraser') { bx.fillStyle = '#fff'; op.pts.forEach(p => { bx.beginPath(); bx.arc(p.x, p.y, op.r, 0, Math.PI*2); bx.fill(); }); }
+      else if (op.type === 'eraser') { op.pts.forEach(p => erase(p.x, p.y, op.r)); }
     }
 
     // Send op from this user — host broadcasts, joiner sends to host
