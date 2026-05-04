@@ -37,6 +37,7 @@
 
     function fitToView() {
       s = minScale();
+      if (window.innerWidth < 600) s = Math.min(s * 1.5, MAX_SCALE);
       ox = (window.innerWidth - WORLD_W * s) / 2;
       oy = hdH + ((window.innerHeight - hdH - tbH) - WORLD_H * s) / 2;
       updateTransform();
