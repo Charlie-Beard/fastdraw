@@ -20,8 +20,15 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Minify assets
+        run: |
+          npm install -g esbuild
+          mkdir dist
+          cp index.html robots.txt sitemap.xml CNAME og-image.png dist/
+          esbuild draw.js --bundle=false --minify --outfile=dist/draw.js
+          esbuild draw.css --bundle=false --minify --outfile=dist/draw.css
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: 'dist'
       - id: deployment
         uses: actions/deploy-pages@v4

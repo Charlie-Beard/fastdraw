@@ -12,7 +12,6 @@
     const MIN_SCALE = 0.2, MAX_SCALE = 8;
     const cdpr = Math.min(dpr, 2);
     let s = 1, ox = 0, oy = 0;
-    let W = 0, H = 0;
 
     function initCanvas(c, ctx) {
       c.width  = WORLD_W * cdpr;
@@ -37,7 +36,6 @@
     }
 
     function boot() {
-      W = innerWidth; H = innerHeight;
       initCanvas(base, bx);
       bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H);
       initCanvas(prev, px);
@@ -45,9 +43,9 @@
     }
 
     boot();
-    addEventListener('resize', () => { W = innerWidth; H = innerHeight; });
 
     // Tool state
+    const FONT_STACK = 'px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
     const S = { tool: 'pen', color: '#1a1a1a', fs: 24, lw: 2.5 };
     const ERASER_R = 20;
     let active = false, pid = -1, x0 = 0, y0 = 0, pts = [], rafPending = false, rx = 0, ry = 0;
@@ -277,7 +275,7 @@
       const t = ti.value.trim();
       if (t) {
         applyStyle(bx);
-        bx.font = S.fs + 'px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+        bx.font = S.fs + FONT_STACK;
         bx.fillText(t, ttx, tty);
         expandBounds(ttx, tty); expandBounds(ttx + t.length * S.fs * 0.6, tty);
         if (shareActive) shareOp({type:'text', x:ttx, y:tty, text:t, fs:S.fs, color:S.color});
@@ -302,9 +300,10 @@
     });
 
     // Toolbar — tools
-    document.querySelectorAll('[data-tool]').forEach(b => {
+    const toolBtns = document.querySelectorAll('[data-tool]');
+    toolBtns.forEach(b => {
       b.addEventListener('click', () => {
-        document.querySelectorAll('[data-tool]').forEach(x => x.classList.remove('on'));
+        toolBtns.forEach(x => x.classList.remove('on'));
         b.classList.add('on');
         S.tool = b.dataset.tool;
         $('fsz').classList.toggle('dim', S.tool !== 'text');
@@ -314,10 +313,11 @@
     });
 
     // Toolbar — colours
-    document.querySelectorAll('.sw').forEach(b => b.style.background = b.dataset.c);
-    document.querySelectorAll('.sw').forEach(b => {
+    const swBtns = document.querySelectorAll('.sw');
+    swBtns.forEach(b => b.style.background = b.dataset.c);
+    swBtns.forEach(b => {
       b.addEventListener('click', () => {
-        document.querySelectorAll('.sw').forEach(x => x.classList.remove('on'));
+        swBtns.forEach(x => x.classList.remove('on'));
         b.classList.add('on');
         S.color = b.dataset.c;
         if (ti.style.display !== 'none') ti.style.color = S.color;
@@ -325,9 +325,10 @@
     });
 
     // Toolbar — font sizes
-    document.querySelectorAll('[data-fs]').forEach(b => {
+    const fsBtns = document.querySelectorAll('[data-fs]');
+    fsBtns.forEach(b => {
       b.addEventListener('click', () => {
-        document.querySelectorAll('[data-fs]').forEach(x => x.classList.remove('on'));
+        fsBtns.forEach(x => x.classList.remove('on'));
         b.classList.add('on');
         S.fs = +b.dataset.fs;
         if (ti.style.display !== 'none') ti.style.fontSize = S.fs + 'px';
@@ -423,7 +424,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       else if (op.type === 'dot')   { bx.beginPath(); bx.arc(op.x, op.y, op.lw/2, 0, Math.PI*2); bx.fill(); }
       else if (op.type === 'rect')  drawRect(bx, op.x0, op.y0, op.x1, op.y1);
       else if (op.type === 'oval')  drawOval(bx, op.x0, op.y0, op.x1, op.y1);
-      else if (op.type === 'text')  { bx.font = op.fs + 'px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'; bx.fillText(op.text, op.x, op.y); }
+      else if (op.type === 'text')  { bx.font = op.fs + FONT_STACK; bx.fillText(op.text, op.x, op.y); }
       else if (op.type === 'reset')  { bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H); db = null; }
       else if (op.type === 'eraser') { bx.fillStyle = '#fff'; op.pts.forEach(p => { bx.beginPath(); bx.arc(p.x, p.y, op.r, 0, Math.PI*2); bx.fill(); }); }
     }
