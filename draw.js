@@ -51,6 +51,8 @@
     }
 
     function updateTransform() {
+      ox = Math.min(0, Math.max(window.innerWidth - WORLD_W * s, ox));
+      oy = Math.min(hdH, Math.max((window.innerHeight - tbH) - WORLD_H * s, oy));
       $('stage').style.transform = `matrix(${s},0,0,${s},${ox},${oy})`;
     }
 
@@ -79,12 +81,8 @@
       hdH = $('hd').offsetHeight;
       tbH = $('tb').offsetHeight;
       const ms = minScale();
-      if (s < ms) {
-        s = ms;
-        ox = (window.innerWidth - WORLD_W * s) / 2;
-        oy = hdH + ((window.innerHeight - hdH - tbH) - WORLD_H * s) / 2;
-        updateTransform();
-      }
+      if (s < ms) s = ms;
+      updateTransform();
     });
 
     // Tool state
