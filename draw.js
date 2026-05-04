@@ -9,9 +9,23 @@
     const px   = prev.getContext('2d');
     let dpr = devicePixelRatio || 1;
     const WORLD_W = 3000, WORLD_H = 2000;
-    const MIN_SCALE = 0.2, MAX_SCALE = 8;
+    const MAX_SCALE = 8;
     const cdpr = Math.min(dpr, 2);
     let s = 1, ox = 0, oy = 0;
+    let hdH = 44, tbH = 80;
+
+    function minScale() {
+      const w = window.innerWidth;
+      const h = window.innerHeight - hdH - tbH;
+      return Math.min(0.98 * w / WORLD_W, 0.98 * h / WORLD_H);
+    }
+
+    function fitToView() {
+      s = minScale();
+      ox = (window.innerWidth - WORLD_W * s) / 2;
+      oy = hdH + ((window.innerHeight - hdH - tbH) - WORLD_H * s) / 2;
+      updateTransform();
+    }
 
     function initCanvas(c, ctx) {
       c.width  = WORLD_W * cdpr;
@@ -26,7 +40,7 @@
     }
 
     function zoomAt(sx, sy, factor) {
-      const ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * factor));
+      const ns = Math.max(minScale(), Math.min(MAX_SCALE, s * factor));
       const wx = (sx - ox) / s;
       const wy = (sy - oy) / s;
       ox = sx - wx * ns;
@@ -39,10 +53,24 @@
       initCanvas(base, bx);
       bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H);
       initCanvas(prev, px);
-      updateTransform();
+      hdH = $('hd').offsetHeight;
+      tbH = $('tb').offsetHeight;
+      fitToView();
     }
 
     boot();
+
+    window.addEventListener('resize', () => {
+      hdH = $('hd').offsetHeight;
+      tbH = $('tb').offsetHeight;
+      const ms = minScale();
+      if (s < ms) {
+        s = ms;
+        ox = (window.innerWidth - WORLD_W * s) / 2;
+        oy = hdH + ((window.innerHeight - hdH - tbH) - WORLD_H * s) / 2;
+        updateTransform();
+      }
+    });
 
     // Tool state
     const FONT_STACK = 'px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
@@ -151,7 +179,7 @@
           const pd = Math.hypot(pb.x-pa.x, pb.y-pa.y);
           const pmx = (pa.x+pb.x)/2, pmy = (pa.y+pb.y)/2;
           if (pd > 0) {
-            const ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, s * dist / pd));
+            const ns = Math.max(minScale(), Math.min(MAX_SCALE, s * dist / pd));
             const wx = (pmx - ox) / s, wy = (pmy - oy) / s;
             ox = midX - wx * ns; oy = midY - wy * ns; s = ns;
           } else { ox += midX - pmx; oy += midY - pmy; }
