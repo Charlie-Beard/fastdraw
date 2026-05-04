@@ -36,8 +36,9 @@
     }
 
     function fitToView() {
-      s = minScale();
-      s = Math.min(s * 1.5, MAX_SCALE);
+      const INITIAL_ZOOM = 1.5;
+      s = Math.max(minScale(), INITIAL_ZOOM);
+      s = Math.min(s, MAX_SCALE);
       ox = (window.innerWidth - WORLD_W * s) / 2;
       oy = hdH + ((window.innerHeight - hdH - tbH) - WORLD_H * s) / 2;
       updateTransform();
