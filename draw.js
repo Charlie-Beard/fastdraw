@@ -1,5 +1,7 @@
   (function(){
     const $=id=>document.getElementById(id);
+    const dsp=(id,v)=>$(id).style.display=v;
+    const txt=(id,v)=>$(id).textContent=v;
     const base = $('base');
     const prev = $('preview');
     const wrap = $('wrap');
@@ -100,11 +102,12 @@
       else { db.x1=Math.min(db.x1,x); db.y1=Math.min(db.y1,y); db.x2=Math.max(db.x2,x); db.y2=Math.max(db.y2,y); }
     }
     function expandOpBounds(op) {
-      if (op.type==='dot') expandBounds(op.x, op.y);
-      else if (op.type==='pen') op.pts.forEach(p => expandBounds(p.x, p.y));
-      else if (op.type==='rect'||op.type==='oval') { expandBounds(op.x0,op.y0); expandBounds(op.x1,op.y1); }
-      else if (op.type==='text') expandBounds(op.x, op.y);
-      else if (op.type==='eraser') op.pts.forEach(p => { expandBounds(p.x-op.r,p.y-op.r); expandBounds(p.x+op.r,p.y+op.r); });
+      switch (op.type) {
+        case 'dot': case 'text': expandBounds(op.x, op.y); break;
+        case 'pen': op.pts.forEach(p => expandBounds(p.x, p.y)); break;
+        case 'rect': case 'oval': expandBounds(op.x0,op.y0); expandBounds(op.x1,op.y1); break;
+        case 'eraser': op.pts.forEach(p => { expandBounds(p.x-op.r,p.y-op.r); expandBounds(p.x+op.r,p.y+op.r); }); break;
+      }
     }
 
     function pos(e) {
@@ -371,7 +374,7 @@
 
     // Reset
     $('rst').addEventListener('click', () => {
-      if (shareActive) { $('rm').style.display = 'flex'; return; }
+      if (shareActive) { dsp('rm','flex'); return; }
       window.location.reload();
     });
 
@@ -380,14 +383,14 @@
       const nav = performance.getEntriesByType('navigation')[0];
       if (nav) {
         const sz = nav.encodedBodySize || nav.transferSize;
-        if (sz > 256) $('s-size').textContent = (sz / 1024).toFixed(1);
-if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms';
+        if (sz > 256) txt('s-size', (sz / 1024).toFixed(1));
+        if (nav.duration > 0) txt('s-load', Math.round(nav.duration) + ' ms');
       }
       if (window.PerformanceObserver) {
         const obs = new PerformanceObserver(list => {
           for (const e of list.getEntries()) {
             if (e.name === 'first-contentful-paint') {
-              $('s-fcp').textContent = Math.round(e.startTime) + ' ms';
+              txt('s-fcp', Math.round(e.startTime) + ' ms');
               obs.disconnect();
             }
           }
@@ -434,11 +437,11 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       s.src = 'https://unpkg.com/peerjs@1/dist/peerjs.min.js';
       s.onload = cb;
       s.onerror = () => {
-        $('sm-conn').style.display = 'none';
-        $('sm-err').textContent = 'Could not load sharing library. Check your connection.';
-        $('sm-err').style.display = 'block';
+        dsp('sm-conn','none');
+        txt('sm-err','Could not load sharing library. Check your connection.');
+        dsp('sm-err','block');
         $('sm-go').disabled = false;
-        $('ov-conn').style.display = 'none';
+        dsp('ov-conn','none');
       };
       document.head.appendChild(s);
     }
@@ -464,8 +467,8 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
 
     // Update the live badge and tell all peers the new count
     function setLiveBadge(n) {
-      $('live-count').textContent = n - 1;
-      $('live-badge').style.display = n > 1 ? 'flex' : 'none';
+      txt('live-count', n - 1);
+      dsp('live-badge', n > 1 ? 'flex' : 'none');
     }
 
     function updateCount() {
@@ -482,7 +485,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       if (myPeer)   { try { myPeer.destroy(); } catch(_){} myPeer = null; }
       isHost = false; shareActive = false;
       history.replaceState(null, '', location.pathname);
-      $('shr').textContent = 'Share';
+      txt('shr','Share');
       $('shr').classList.remove('live');
       setLiveBadge(0);
       commitText();
@@ -514,12 +517,9 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
 
     // Host: create a new session
     function startSession() {
-      const smGo   = $('sm-go');
-      const smConn = $('sm-conn');
-      const smErr  = $('sm-err');
-      smGo.disabled = true;
-      smConn.style.display = 'block';
-      smErr.style.display  = 'none';
+      $('sm-go').disabled = true;
+      dsp('sm-conn','block');
+      dsp('sm-err','none');
 
       loadPeerJS(() => {
         myPeer = new Peer();
@@ -528,32 +528,32 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
           shareActive = true;
           history.replaceState(null, '', `?room=${id}`);
           $('sm-url').value = location.href;
-          smConn.style.display = 'none';
-          $('sm-btns').style.display = 'none';
-          $('sm-url-row').style.display = 'flex';
+          dsp('sm-conn','none');
+          dsp('sm-btns','none');
+          dsp('sm-url-row','flex');
           $('shr').classList.add('live');
-          $('shr').textContent = 'Shared';
+          txt('shr','Shared');
           setLiveBadge(1);
         });
-        myPeer.on('connection', conn => setupConn(conn));
+        myPeer.on('connection', setupConn);
         myPeer.on('error', () => {
-          smConn.style.display = 'none';
-          smErr.style.display  = 'block';
-          smGo.disabled = false;
+          dsp('sm-conn','none');
+          dsp('sm-err','block');
+          $('sm-go').disabled = false;
         });
       });
     }
 
     // Joiner: connect to an existing session via room ID in URL
     function joinSession(roomId) {
-      $('ov-conn').style.display = 'flex';
+      dsp('ov-conn','flex');
       loadPeerJS(() => {
         myPeer = new Peer();
         myPeer.on('open', () => {
           hostConn = myPeer.connect(roomId, { reliable: true });
           hostConn.on('open', () => {
             shareActive = true;
-            $('ov-conn').style.display = 'none';
+            dsp('ov-conn','none');
           });
           hostConn.on('data', data => {
             if (data.type === 'init') {
@@ -573,53 +573,47 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
           hostConn.on('close', () => {
             shareActive = false;
             setLiveBadge(0);
-            $('ov-end').style.display = 'flex';
+            dsp('ov-end','flex');
           });
         });
         myPeer.on('error', () => {
-          // Connection failed — just proceed in solo mode
-          $('ov-conn').style.display = 'none';
+          dsp('ov-conn','none');
         });
       });
     }
 
     // Share button
     function openModal() {
-      const s = shareActive;
-      $('sm-conn').style.display    = 'none';
-      $('sm-err').style.display     = 'none';
-      $('sm-btns').style.display    = s ? 'none' : 'flex';
-      $('sm-url-row').style.display = s ? 'flex' : 'none';
-      if (!s) $('sm-go').disabled = false;
-      $('sm').style.display = 'flex';
+      const a = shareActive;
+      dsp('sm-conn','none');
+      dsp('sm-err','none');
+      dsp('sm-btns', a ? 'none' : 'flex');
+      dsp('sm-url-row', a ? 'flex' : 'none');
+      if (!a) $('sm-go').disabled = false;
+      dsp('sm','flex');
     }
     $('shr').addEventListener('click', openModal);
 
     function closeModal() {
-      $('sm').style.display = 'none';
+      dsp('sm','none');
       if (!shareActive && myPeer) { myPeer.destroy(); myPeer = null; }
     }
     $('sm-cancel').addEventListener('click', closeModal);
     $('sm-close').addEventListener('click', closeModal);
-    $('rm-cancel').addEventListener('click', () => { $('rm').style.display = 'none'; });
-    $('rm-go').addEventListener('click', () => { $('rm').style.display = 'none'; endSession(); });
+    $('rm-cancel').addEventListener('click', () => dsp('rm','none'));
+    $('rm-go').addEventListener('click', () => { dsp('rm','none'); endSession(); });
 
     $('sm-go').addEventListener('click', startSession);
 
     $('sm-copy').addEventListener('click', () => {
       navigator.clipboard.writeText($('sm-url').value).then(() => {
-        const btn = $('sm-copy');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 2000);
+        txt('sm-copy','Copied!');
+        setTimeout(() => txt('sm-copy','Copy'), 2000);
       });
     });
 
-    // Session-ended overlay buttons
     $('ov-end-save').addEventListener('click', savePng);
-
-    $('ov-end-cont').addEventListener('click', () => {
-      $('ov-end').style.display = 'none';
-    });
+    $('ov-end-cont').addEventListener('click', () => dsp('ov-end','none'));
 
     // Detect join URL on page load and lazy-load PeerJS only if needed
     const roomParam = new URLSearchParams(location.search).get('room');

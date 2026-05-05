@@ -22,24 +22,36 @@ jobs:
           enablement: true
       - name: Minify assets
         run: |
-          npm install -g esbuild
           mkdir dist
           cp index.html robots.txt sitemap.xml CNAME og-image.png dist/
-          esbuild draw.js --bundle=false --minify --outfile=dist/draw.js
-          esbuild draw.css --bundle=false --minify --outfile=dist/draw.css
+          npx -y terser draw.js \
+            --compress passes=3,unsafe_arrows=true,unsafe_methods=true,pure_getters=true,toplevel=true \
+            --mangle toplevel=true \
+            --format ecma=2020 \
+            -o dist/draw.js
+          npx -y esbuild draw.css --minify --outfile=dist/draw.css
+      - name: Inline CSS into HTML
+        run: |
+          CSS=$(cat dist/draw.css)
+          export CSS
+          python3 -c "import os,re,sys;h=open('dist/index.html').read();css=os.environ['CSS'];h=re.sub(r'<link rel=\"stylesheet\" href=\"draw\\.css\">', '<style>'+css+'</style>', h);open('dist/index.html','w').write(h)"
+          rm dist/draw.css
       - name: Add cache busting query params
         run: |
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          sed -i "s|href=\"draw.css\"|href=\"draw.css?v=$COMMIT_HASH\"|g" dist/index.html
           sed -i "s|src=\"draw.js\"|src=\"draw.js?v=$COMMIT_HASH\"|g" dist/index.html
       - name: Minify HTML
         run: |
           npx -y html-minifier-terser dist/index.html \
             --collapse-whitespace \
+            --collapse-boolean-attributes \
             --remove-comments \
             --remove-attribute-quotes \
             --remove-redundant-attributes \
             --use-short-doctype \
+            --decode-entities \
+            --sort-attributes \
+            --sort-class-name \
             --minify-css true \
             --minify-js true \
             -o dist/index.html
