@@ -43,3 +43,27 @@ Pushes to `main` auto-deploy to [fastdraw.online](https://fastdraw.online) via G
 ## Live sharing
 
 The host clicks **Share**, gets a `?room={id}` URL, and shares it. Joiners open the URL and connect directly to the host over WebRTC. The host syncs the current canvas as a JPEG then broadcasts all subsequent drawing operations. Closing the host tab ends the session for all participants.
+
+## Drawing operation schema
+
+All drawing actions are represented as plain objects — used locally in `applyOp` and sent over WebRTC during live sessions.
+
+| type | fields |
+|------|--------|
+| `pen` | `pts [{x,y}]`, `iters`, `color`, `lw` |
+| `dot` | `x`, `y`, `color`, `lw` |
+| `rect` | `x0`, `y0`, `x1`, `y1`, `color`, `lw` |
+| `oval` | `x0`, `y0`, `x1`, `y1`, `color`, `lw` |
+| `text` | `x`, `y`, `text`, `fs`, `color` |
+| `eraser` | `pts [{x,y}]`, `r` |
+| `reset` | _(no fields)_ |
+
+## How to extend
+
+**Add a colour** — add a `<button class="sw" data-c="#hex">` in `index.html`. The `wireGroup('.sw', ...)` handler in `draw.js` picks it up automatically.
+
+**Add a tool** — add a `data-tool` button in `index.html`, handle the new tool in the `pointerdown`/`pointermove`/`endDraw` blocks in `draw.js`, and add a matching branch in `applyOp`/`shareOp`.
+
+**Change constants** — `WORLD_W`/`WORLD_H`, `MAX_SCALE`, `ERASER_R`, and `FONT_STACK` are all defined at the top of the IIFE in `draw.js`.
+
+**Add a CDN resource** — update the `Content-Security-Policy` meta tag in `index.html` to allow the new origin (see CLAUDE.md for details).

@@ -9,7 +9,7 @@
     let dpr = devicePixelRatio || 1;
     const WORLD_W = 3000, WORLD_H = 2000;
     const MAX_SCALE = 8;
-    const cdpr = Math.min(dpr, 2);
+    const cdpr = Math.min(dpr, 2); // cap at 2× — 3× displays would quadruple canvas memory for negligible visual gain
     let s = 1, ox = 0, oy = 0;
     let hdH = 44, tbH = 80;
 
@@ -21,7 +21,7 @@
 
     function fitToContent(bounds) {
       if (!bounds) { fitToView(); return; }
-      const pad = 60;
+      const pad = 60; // visual breathing room around drawn content
       const cw = bounds.x2 - bounds.x1 + 2 * pad;
       const ch = bounds.y2 - bounds.y1 + 2 * pad;
       const availW = window.innerWidth;
@@ -53,6 +53,7 @@
     }
 
     function updateTransform() {
+      // clamp so the canvas edge can never be scrolled past the viewport edge
       ox = Math.min(0, Math.max(window.innerWidth - WORLD_W * s, ox));
       oy = Math.min(hdH, Math.max((window.innerHeight - tbH) - WORLD_H * s, oy));
       $('stage').style.transform = `matrix(${s},0,0,${s},${ox},${oy})`;
@@ -60,6 +61,8 @@
 
     function zoomAt(sx, sy, factor) {
       const ns = Math.max(minScale(), Math.min(MAX_SCALE, s * factor));
+      // convert the screen pivot point to world coords at old scale, then recompute
+      // offset so that same world point stays under the pointer at the new scale
       const wx = (sx - ox) / s;
       const wy = (sy - oy) / s;
       ox = sx - wx * ns;
@@ -93,7 +96,7 @@
     const ERASER_R = 20;
     let active = false, pid = -1, x0 = 0, y0 = 0, pts = [], rafPending = false, rx = 0, ry = 0;
     const ptrs = new Map();
-    let _prevPtrs = null;
+    let _prevPtrs = null; // snapshot of ptrs from previous frame — cloned so live mutations don't corrupt the delta calc
     let db = null;
     function expandBounds(x, y) {
       if (!db) db = {x1:x, y1:y, x2:x, y2:y};
@@ -104,7 +107,7 @@
       else if (op.type==='pen') op.pts.forEach(p => expandBounds(p.x, p.y));
       else if (op.type==='rect'||op.type==='oval') { expandBounds(op.x0,op.y0); expandBounds(op.x1,op.y1); }
       else if (op.type==='text') expandBounds(op.x, op.y);
-      else if (op.type==='eraser') op.pts.forEach(p => { expandBounds(p.x-op.r,p.y-op.r); expandBounds(p.x+op.r,p.y+op.r); });
+      else if (op.type==='eraser') op.pts.forEach(p => { expandBounds(p.x-op.r,p.y-op.r); expandBounds(p.x+op.r,p.y+op.r); }); // ±r to account for circle radius
     }
 
     function pos(e) {
@@ -119,6 +122,8 @@
 
     function erase(x, y, r) { bx.fillStyle='#fff'; bx.beginPath(); bx.arc(x,y,r,0,Math.PI*2); bx.fill(); }
 
+    // Chaikin's corner-cutting algorithm: each pass replaces every segment with two
+    // points at the 1/4 and 3/4 positions, progressively smoothing the polyline.
     function chaikin(p, n) {
       if (p.length < 3) return p;
       let a = p;
@@ -185,6 +190,8 @@
     wrap.addEventListener('pointermove', e => {
       ptrs.set(e.pointerId, {x: e.clientX, y: e.clientY});
       if (ptrs.size >= 2) {
+        // Simultaneous pinch-zoom + pan: scale factor = distance ratio between frames,
+        // translation = midpoint delta. Guard pd > 0 prevents divide-by-zero on first frame.
         const [a, b] = [...ptrs.values()];
         const dist = Math.hypot(b.x-a.x, b.y-a.y);
         const midX = (a.x+b.x)/2, midY = (a.y+b.y)/2;
@@ -209,7 +216,7 @@
       if (S.tool === 'pen') {
         const l = pts[pts.length - 1];
         const dx = x - l.x, dy = y - l.y;
-        if (dx*dx + dy*dy > 4) {
+        if (dx*dx + dy*dy > 4) { // squared-distance threshold (2px) avoids sqrt per event and culls micro-jitter
           pts.push({x, y});
           applyStyle(px);
           px.lineTo(x, y);
@@ -220,7 +227,7 @@
       } else if (S.tool === 'eraser') {
         const l = pts[pts.length - 1];
         const dx = x - l.x, dy = y - l.y;
-        if (dx*dx + dy*dy > 4) {
+        if (dx*dx + dy*dy > 4) { // same squared-distance threshold as pen
           pts.push({x, y});
           erase(x, y, ERASER_R);
         }
@@ -265,7 +272,7 @@
           bx.fill();
           op = {type:'dot', x:pts[0].x, y:pts[0].y, color:S.color, lw:S.lw};
         } else {
-          const iters = pts.length > 8 ? 3 : 1;
+          const iters = pts.length > 8 ? 3 : 1; // more points = more smoothing needed; capped at 3 to avoid exponential point explosion
           polyline(bx, chaikin(pts, iters));
           op = {type:'pen', pts, iters, color:S.color, lw:S.lw};
         }
@@ -334,6 +341,8 @@
     });
 
     ti.addEventListener('blur', () => {
+      // 80ms delay lets a toolbar button click register before blur fires,
+      // so switching tools doesn't spuriously commit with an empty string
       setTimeout(() => {
         if (ti.style.display !== 'none' && document.activeElement !== ti) commitText();
       }, 80);
@@ -453,7 +462,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       else if (op.type === 'oval')  drawOval(bx, op.x0, op.y0, op.x1, op.y1);
       else if (op.type === 'text')  { bx.font = op.fs + FONT_STACK; bx.fillText(op.text, op.x, op.y); }
       else if (op.type === 'reset')  { bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H); db = null; }
-      else if (op.type === 'eraser') { op.pts.forEach(p => erase(p.x, p.y, op.r)); }
+      else if (op.type === 'eraser') { op.pts.forEach(p => erase(p.x, p.y, op.r)); } // eraser subtracts content so bounds aren't expanded
     }
 
     // Send op from this user — host broadcasts, joiner sends to host
@@ -496,7 +505,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       peerConns.push(conn);
       conn.on('open', () => {
         // Sync the current canvas state to the new joiner
-        conn.send({type:'init', canvas: base.toDataURL('image/jpeg', 0.85), db});
+        conn.send({type:'init', canvas: base.toDataURL('image/jpeg', 0.85), db}); // JPEG 0.85: good fidelity/size tradeoff — PNG would be too large for WebRTC data channel
         updateCount();
       });
       conn.on('data', data => {
