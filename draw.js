@@ -437,7 +437,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
     let ws = null;
     const PARTYKIT_HOST = location.hostname === 'localhost'
       ? 'localhost:1999'
-      : 'fastdraw.charlesbeard.partykit.dev';
+      : 'fastdraw.charlie-beard.partykit.dev';
 
     // Apply a received draw operation to the base canvas
     function applyOp(op) {
