@@ -433,24 +433,11 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
 
     // ── Live sharing ──────────────────────────────────────────────────────────
 
-    let isHost = false, shareActive = false;
-    let myPeer = null, peerConns = [], hostConn = null;
-
-    // Lazy-load PeerJS from CDN only when sharing is initiated
-    function loadPeerJS(cb) {
-      if (window.Peer) { cb(); return; }
-      const s = document.createElement('script');
-      s.src = 'https://unpkg.com/peerjs@1/dist/peerjs.min.js';
-      s.onload = cb;
-      s.onerror = () => {
-        $('sm-conn').style.display = 'none';
-        $('sm-err').textContent = 'Could not load sharing library. Check your connection.';
-        $('sm-err').style.display = 'block';
-        $('sm-go').disabled = false;
-        $('ov-conn').style.display = 'none';
-      };
-      document.head.appendChild(s);
-    }
+    let shareActive = false;
+    let ws = null;
+    const PARTYKIT_HOST = location.hostname === 'localhost'
+      ? 'localhost:1999'
+      : 'fastdraw.charlesbeard.partykit.dev';
 
     // Apply a received draw operation to the base canvas
     function applyOp(op) {
@@ -465,31 +452,24 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       else if (op.type === 'eraser') { op.pts.forEach(p => erase(p.x, p.y, op.r)); } // eraser subtracts content so bounds aren't expanded
     }
 
-    // Send op from this user — host broadcasts, joiner sends to host
     function shareOp(op) {
-      if (isHost) peerConns.forEach(c => { if (c.open) c.send({type:'draw', op}); });
-      else if (hostConn && hostConn.open) hostConn.send({type:'draw', op});
+      if (ws && ws.readyState === WebSocket.OPEN)
+        ws.send(JSON.stringify({ type: 'draw', op }));
     }
 
-    // Update the live badge and tell all peers the new count
     function setLiveBadge(n) {
       $('live-count').textContent = n - 1;
       $('live-badge').style.display = n > 1 ? 'flex' : 'none';
     }
 
-    function updateCount() {
-      const n = peerConns.filter(c => c.open).length + 1; // +1 for host
-      setLiveBadge(n);
-      peerConns.forEach(c => { if (c.open) c.send({type:'count', n}); });
-    }
-
-    // Tear down the session — disconnect peers, reset state and UI
     function endSession() {
-      peerConns.forEach(c => { try { c.close(); } catch(_){} });
-      peerConns = [];
-      if (hostConn) { try { hostConn.close(); } catch(_){} hostConn = null; }
-      if (myPeer)   { try { myPeer.destroy(); } catch(_){} myPeer = null; }
-      isHost = false; shareActive = false;
+      if (ws) {
+        if (ws.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: 'end' }));
+        try { ws.close(); } catch(_) {}
+        ws = null;
+      }
+      shareActive = false;
       history.replaceState(null, '', location.pathname);
       $('shr').textContent = 'Share';
       $('shr').classList.remove('live');
@@ -500,96 +480,73 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       px.clearRect(0, 0, WORLD_W, WORLD_H);
     }
 
-    // Host: wire up a new incoming connection
-    function setupConn(conn) {
-      peerConns.push(conn);
-      conn.on('open', () => {
-        // Sync the current canvas state to the new joiner
-        conn.send({type:'init', canvas: base.toDataURL('image/jpeg', 0.85), db}); // JPEG 0.85: good fidelity/size tradeoff — PNG would be too large for WebRTC data channel
-        updateCount();
-      });
-      conn.on('data', data => {
-        if (data.type === 'draw') {
+    function connectToRoom(roomId, isCreator) {
+      const proto = location.hostname === 'localhost' ? 'ws' : 'wss';
+      ws = new WebSocket(`${proto}://${PARTYKIT_HOST}/party/${roomId}`);
+
+      ws.onopen = () => {
+        shareActive = true;
+        history.replaceState(null, '', `?room=${roomId}`);
+        $('sm-url').value = location.href;
+        $('sm-conn').style.display    = 'none';
+        $('sm-btns').style.display    = 'none';
+        $('sm-url-row').style.display = 'flex';
+        $('shr').classList.add('live');
+        $('shr').textContent = 'Shared';
+        $('ov-conn').style.display = 'none';
+        if (isCreator)
+          ws.send(JSON.stringify({ type: 'snapshot', canvas: base.toDataURL('image/jpeg', 0.85), db }));
+      };
+
+      ws.onmessage = e => {
+        const data = JSON.parse(e.data);
+        if (data.type === 'init') {
+          const img = new Image();
+          img.onload = () => {
+            bx.drawImage(img, 0, 0, WORLD_W, WORLD_H);
+            if (data.db) db = data.db;
+            fitToContent(data.db);
+          };
+          img.src = data.canvas;
+        } else if (data.type === 'draw') {
           applyOp(data.op);
-          // Rebroadcast to all other peers
-          peerConns.forEach(c => { if (c !== conn && c.open) c.send(data); });
+        } else if (data.type === 'count') {
+          setLiveBadge(data.n);
+        } else if (data.type === 'end') {
+          shareActive = false;
+          ws = null;
+          setLiveBadge(0);
+          $('ov-end').style.display = 'flex';
         }
-      });
-      conn.on('close', () => {
-        peerConns = peerConns.filter(c => c !== conn);
-        updateCount();
-      });
+      };
+
+      ws.onerror = () => {
+        $('sm-conn').style.display = 'none';
+        $('sm-err').style.display  = 'block';
+        $('sm-go').disabled = false;
+        $('ov-conn').style.display = 'none';
+      };
+
+      ws.onclose = () => {
+        if (!shareActive) return;
+        shareActive = false;
+        ws = null;
+        setLiveBadge(0);
+        $('ov-end').style.display = 'flex';
+      };
     }
 
-    // Host: create a new session
     function startSession() {
-      const smGo   = $('sm-go');
-      const smConn = $('sm-conn');
-      const smErr  = $('sm-err');
-      smGo.disabled = true;
-      smConn.style.display = 'block';
-      smErr.style.display  = 'none';
-
-      loadPeerJS(() => {
-        myPeer = new Peer();
-        myPeer.on('open', id => {
-          isHost      = true;
-          shareActive = true;
-          history.replaceState(null, '', `?room=${id}`);
-          $('sm-url').value = location.href;
-          smConn.style.display = 'none';
-          $('sm-btns').style.display = 'none';
-          $('sm-url-row').style.display = 'flex';
-          $('shr').classList.add('live');
-          $('shr').textContent = 'Shared';
-          setLiveBadge(1);
-        });
-        myPeer.on('connection', conn => setupConn(conn));
-        myPeer.on('error', () => {
-          smConn.style.display = 'none';
-          smErr.style.display  = 'block';
-          smGo.disabled = false;
-        });
-      });
+      $('sm-go').disabled = true;
+      $('sm-conn').style.display = 'block';
+      $('sm-err').style.display  = 'none';
+      const roomId = Math.random().toString(36).slice(2, 8);
+      connectToRoom(roomId, true);
     }
 
-    // Joiner: connect to an existing session via room ID in URL
     function joinSession(roomId) {
       $('ov-conn').style.display = 'flex';
-      loadPeerJS(() => {
-        myPeer = new Peer();
-        myPeer.on('open', () => {
-          hostConn = myPeer.connect(roomId, { reliable: true });
-          hostConn.on('open', () => {
-            shareActive = true;
-            $('ov-conn').style.display = 'none';
-          });
-          hostConn.on('data', data => {
-            if (data.type === 'init') {
-              const img = new Image();
-              img.onload = () => {
-                bx.drawImage(img, 0, 0, WORLD_W, WORLD_H);
-                if (data.db) db = data.db;
-                fitToContent(data.db);
-              };
-              img.src = data.canvas;
-            } else if (data.type === 'draw') {
-              applyOp(data.op);
-            } else if (data.type === 'count') {
-              setLiveBadge(data.n);
-            }
-          });
-          hostConn.on('close', () => {
-            shareActive = false;
-            setLiveBadge(0);
-            $('ov-end').style.display = 'flex';
-          });
-        });
-        myPeer.on('error', () => {
-          // Connection failed — just proceed in solo mode
-          $('ov-conn').style.display = 'none';
-        });
-      });
+      connectToRoom(roomId, false);
     }
 
     // Share button
@@ -604,10 +561,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
     }
     $('shr').addEventListener('click', openModal);
 
-    function closeModal() {
-      $('sm').style.display = 'none';
-      if (!shareActive && myPeer) { myPeer.destroy(); myPeer = null; }
-    }
+    function closeModal() { $('sm').style.display = 'none'; }
     $('sm-cancel').addEventListener('click', closeModal);
     $('sm-close').addEventListener('click', closeModal);
     $('rm-cancel').addEventListener('click', () => { $('rm').style.display = 'none'; });
@@ -630,7 +584,7 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
       $('ov-end').style.display = 'none';
     });
 
-    // Detect join URL on page load and lazy-load PeerJS only if needed
+    // Detect join URL on page load
     const roomParam = new URLSearchParams(location.search).get('room');
     if (roomParam) joinSession(roomParam);
 
