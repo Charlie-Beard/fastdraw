@@ -102,12 +102,70 @@
       if (!db) db = {x1:x, y1:y, x2:x, y2:y};
       else { db.x1=Math.min(db.x1,x); db.y1=Math.min(db.y1,y); db.x2=Math.max(db.x2,x); db.y2=Math.max(db.y2,y); }
     }
-    function expandOpBounds(op) {
-      if (op.type==='dot') expandBounds(op.x, op.y);
-      else if (op.type==='pen') op.pts.forEach(p => expandBounds(p.x, p.y));
-      else if (op.type==='rect'||op.type==='oval') { expandBounds(op.x0,op.y0); expandBounds(op.x1,op.y1); }
-      else if (op.type==='text') expandBounds(op.x, op.y);
-      else if (op.type==='eraser') op.pts.forEach(p => { expandBounds(p.x-op.r,p.y-op.r); expandBounds(p.x+op.r,p.y+op.r); }); // ±r to account for circle radius
+
+    // ── History (undo/redo) ───────────────────────────────────────────────────
+    // Every committed action is an op. The canvas is always reproducible as
+    // baseline (white, or the snapshot a joiner received) + ops replayed in order.
+    let ops = [], redoStack = [];
+    let baseline = null, baseDb = null; // snapshot image + its bounds (joiners / share start)
+
+    // Draw an op onto the base canvas and expand db to cover it.
+    // Eraser subtracts content so it never expands bounds.
+    function renderOp(op) {
+      applyStyle(bx, op.color, op.lw);
+      if (op.type === 'pen') { polyline(bx, chaikin(op.pts, op.iters)); op.pts.forEach(p => expandBounds(p.x, p.y)); }
+      else if (op.type === 'dot') { bx.beginPath(); bx.arc(op.x, op.y, op.lw/2, 0, Math.PI*2); bx.fill(); expandBounds(op.x, op.y); }
+      else if (op.type === 'rect') { drawRect(bx, op.x0, op.y0, op.x1, op.y1); expandBounds(op.x0, op.y0); expandBounds(op.x1, op.y1); }
+      else if (op.type === 'oval') { drawOval(bx, op.x0, op.y0, op.x1, op.y1); expandBounds(op.x0, op.y0); expandBounds(op.x1, op.y1); }
+      else if (op.type === 'text') {
+        bx.font = op.fs + FONT_STACK;
+        bx.fillText(op.text, op.x, op.y);
+        const m = bx.measureText(op.text);
+        expandBounds(op.x, op.y - (m.actualBoundingBoxAscent || op.fs * 0.8));
+        expandBounds(op.x + m.width, op.y + (m.actualBoundingBoxDescent || op.fs * 0.25));
+      }
+      else if (op.type === 'eraser') op.pts.forEach(p => erase(p.x, p.y, op.r));
+      else if (op.type === 'reset') { bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H); db = null; }
+    }
+
+    function repaint() {
+      bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H);
+      db = baseDb ? {...baseDb} : null;
+      if (baseline) bx.drawImage(baseline, 0, 0, WORLD_W, WORLD_H);
+      ops.forEach(renderOp);
+    }
+
+    function syncHistBtns() {
+      $('undo').disabled = !ops.length;
+      $('redo').disabled = !redoStack.length;
+    }
+
+    function commitOp(op) {
+      ops.push(op);
+      redoStack.length = 0;
+      renderOp(op);
+      if (shareActive) shareOp(op);
+      scheduleSnapshot();
+      syncHistBtns();
+    }
+
+    function doUndo(broadcast = true) {
+      if (!ops.length) return;
+      redoStack.push(ops.pop());
+      repaint();
+      if (broadcast && shareActive) shareOp({type:'undo'});
+      scheduleSnapshot();
+      syncHistBtns();
+    }
+
+    function doRedo(broadcast = true) {
+      if (!redoStack.length) return;
+      const op = redoStack.pop();
+      ops.push(op);
+      renderOp(op);
+      if (broadcast && shareActive) shareOp({type:'redo'});
+      scheduleSnapshot();
+      syncHistBtns();
     }
 
     function pos(e) {
@@ -165,12 +223,27 @@
     wrap.addEventListener('pointerdown', e => {
       ptrs.set(e.pointerId, {x: e.clientX, y: e.clientY});
       if (e.button > 0) return;
-      if (ptrs.size >= 2) { active = false; return; }
+      if (ptrs.size >= 2) {
+        // second finger = pinch gesture; abandon the in-progress stroke
+        if (active) {
+          active = false;
+          px.clearRect(0, 0, WORLD_W, WORLD_H);
+          // eraser already changed the base canvas — record what happened so
+          // history replay and live peers stay consistent
+          if (S.tool === 'eraser' && pts.length) commitOp({type:'eraser', pts, r:ERASER_R});
+        }
+        return;
+      }
       wrap.setPointerCapture(e.pointerId);
       pid = e.pointerId;
       const {x, y} = pos(e);
 
-      if (S.tool === 'text') { commitText(); showText(x, y); return; }
+      if (S.tool === 'text') {
+        e.preventDefault(); // stop the follow-up mousedown from stealing focus off #ti
+        commitText();
+        showText(x, y);
+        return;
+      }
 
       active = true;
       x0 = x; y0 = y;
@@ -254,38 +327,26 @@
       const {x, y} = pos(e);
       px.clearRect(0, 0, WORLD_W, WORLD_H);
 
-      if (S.tool === 'eraser') {
-        pts.push({x, y});
-        erase(x, y, ERASER_R);
-        if (shareActive) shareOp({type:'eraser', pts, r:ERASER_R});
-        return;
-      }
-
-      applyStyle(bx);
       let op = null;
 
-      if (S.tool === 'pen') {
+      if (S.tool === 'eraser') {
+        pts.push({x, y});
+        op = {type:'eraser', pts, r:ERASER_R};
+      } else if (S.tool === 'pen') {
         pts.push({x, y});
         if (pts.length === 1) {
-          bx.beginPath();
-          bx.arc(pts[0].x, pts[0].y, S.lw / 2, 0, Math.PI*2);
-          bx.fill();
           op = {type:'dot', x:pts[0].x, y:pts[0].y, color:S.color, lw:S.lw};
         } else {
           const iters = pts.length > 8 ? 3 : 1; // more points = more smoothing needed; capped at 3 to avoid exponential point explosion
-          polyline(bx, chaikin(pts, iters));
           op = {type:'pen', pts, iters, color:S.color, lw:S.lw};
         }
       } else if (S.tool === 'rect') {
-        drawRect(bx, x0, y0, x, y);
         op = {type:'rect', x0, y0, x1:x, y1:y, color:S.color, lw:S.lw};
       } else if (S.tool === 'oval') {
-        drawOval(bx, x0, y0, x, y);
         op = {type:'oval', x0, y0, x1:x, y1:y, color:S.color, lw:S.lw};
       }
 
-      if (op) expandOpBounds(op);
-      if (op && shareActive) shareOp(op);
+      if (op) commitOp(op);
     }
 
     wrap.addEventListener('pointerup',     endDraw);
@@ -320,13 +381,7 @@
     function commitText() {
       if (ti.style.display === 'none') return;
       const t = ti.value.trim();
-      if (t) {
-        applyStyle(bx);
-        bx.font = S.fs + FONT_STACK;
-        bx.fillText(t, ttx, tty);
-        expandBounds(ttx, tty); expandBounds(ttx + t.length * S.fs * 0.6, tty);
-        if (shareActive) shareOp({type:'text', x:ttx, y:tty, text:t, fs:S.fs, color:S.color});
-      }
+      if (t) commitOp({type:'text', x:ttx, y:tty, text:t, fs:S.fs, color:S.color});
       ti.style.display = 'none';
       ti.value = '';
     }
@@ -363,6 +418,7 @@
       S.tool = b.dataset.tool;
       $('fsz').classList.toggle('dim', S.tool !== 'text');
       wrap.classList.toggle('erasing', S.tool === 'eraser');
+      wrap.classList.toggle('texting', S.tool === 'text');
       if (S.tool !== 'text') commitText();
     });
 
@@ -378,10 +434,42 @@
       if (ti.style.display !== 'none') ti.style.fontSize = S.fs + 'px';
     });
 
-    // Reset
+    // Reset — recorded as an op so it can be undone
     $('rst').addEventListener('click', () => {
       if (shareActive) { $('rm').style.display = 'flex'; return; }
-      window.location.reload();
+      commitText();
+      if (db) commitOp({type:'reset'});
+      fitToView();
+    });
+
+    // Undo / redo
+    $('undo').addEventListener('click', () => { commitText(); doUndo(); });
+    $('redo').addEventListener('click', () => { commitText(); doRedo(); });
+
+    // Keyboard shortcuts
+    const TOOL_KEYS = {p:'pen', r:'rect', o:'oval', t:'text', e:'eraser'};
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        closeModal();
+        $('rm').style.display = 'none';
+        $('ov-end').style.display = 'none';
+        return;
+      }
+      if (e.target.tagName === 'INPUT') return;
+      const k = e.key.toLowerCase();
+      if (e.ctrlKey || e.metaKey) {
+        if (k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); }
+        else if (k === 'y') { e.preventDefault(); doRedo(); }
+        else if (k === 's') { e.preventDefault(); savePng(); }
+        return;
+      }
+      if (e.altKey) return;
+      if (TOOL_KEYS[k]) document.querySelector(`[data-tool="${TOOL_KEYS[k]}"]`).click();
+    });
+
+    // Warn before discarding a non-empty drawing
+    window.addEventListener('beforeunload', e => {
+      if (db) { e.preventDefault(); e.returnValue = ''; }
     });
 
     // Performance metrics
@@ -390,7 +478,7 @@
       if (nav) {
         const sz = nav.encodedBodySize || nav.transferSize;
         if (sz > 256) $('s-size').textContent = (sz / 1024).toFixed(1);
-if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms';
+        if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms';
       }
       if (window.PerformanceObserver) {
         const obs = new PerformanceObserver(list => {
@@ -435,26 +523,41 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
 
     let shareActive = false;
     let ws = null;
+    let isHost = false;       // creator of the room — responsible for snapshot refreshes
+    let snapTimer = 0;
+    let initQueue = null;     // ops received while the init snapshot image is still decoding
     const PARTYKIT_HOST = location.hostname === 'localhost'
       ? 'localhost:1999'
       : 'fastdraw.charlie-beard.partykit.dev';
 
-    // Apply a received draw operation to the base canvas
-    function applyOp(op) {
-      if (op.type !== 'reset' && op.type !== 'eraser') expandOpBounds(op);
-      applyStyle(bx, op.color, op.lw);
-      if      (op.type === 'pen')   polyline(bx, chaikin(op.pts, op.iters));
-      else if (op.type === 'dot')   { bx.beginPath(); bx.arc(op.x, op.y, op.lw/2, 0, Math.PI*2); bx.fill(); }
-      else if (op.type === 'rect')  drawRect(bx, op.x0, op.y0, op.x1, op.y1);
-      else if (op.type === 'oval')  drawOval(bx, op.x0, op.y0, op.x1, op.y1);
-      else if (op.type === 'text')  { bx.font = op.fs + FONT_STACK; bx.fillText(op.text, op.x, op.y); }
-      else if (op.type === 'reset')  { bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H); db = null; }
-      else if (op.type === 'eraser') { op.pts.forEach(p => erase(p.x, p.y, op.r)); } // eraser subtracts content so bounds aren't expanded
+    // Apply a received draw operation, keeping local history in sync
+    function handleRemoteOp(op) {
+      if (initQueue) { initQueue.push(op); return; }
+      if (op.type === 'undo') doUndo(false);
+      else if (op.type === 'redo') doRedo(false);
+      else {
+        ops.push(op);
+        redoStack.length = 0;
+        renderOp(op);
+        scheduleSnapshot();
+        syncHistBtns();
+      }
     }
 
     function shareOp(op) {
       if (ws && ws.readyState === WebSocket.OPEN)
         ws.send(JSON.stringify({ type: 'draw', op }));
+    }
+
+    // The server hands new joiners its stored snapshot, so the host refreshes it
+    // (debounced) after activity — otherwise late joiners would see a stale canvas.
+    function scheduleSnapshot() {
+      if (!isHost || !shareActive) return;
+      clearTimeout(snapTimer);
+      snapTimer = setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: 'snapshot', canvas: base.toDataURL('image/jpeg', 0.85), db }));
+      }, 2500);
     }
 
     function setLiveBadge(n) {
@@ -470,18 +573,24 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
         ws = null;
       }
       shareActive = false;
+      isHost = false;
+      clearTimeout(snapTimer);
+      initQueue = null;
       history.replaceState(null, '', location.pathname);
       $('shr').textContent = 'Share';
       $('shr').classList.remove('live');
       setLiveBadge(0);
       commitText();
       db = null;
+      ops = []; redoStack = []; baseline = null; baseDb = null;
+      syncHistBtns();
       bx.fillStyle = '#fff'; bx.fillRect(0, 0, WORLD_W, WORLD_H);
       px.clearRect(0, 0, WORLD_W, WORLD_H);
     }
 
     function connectToRoom(roomId, isCreator) {
       const proto = location.hostname === 'localhost' ? 'ws' : 'wss';
+      isHost = isCreator;
       ws = new WebSocket(`${proto}://${PARTYKIT_HOST}/party/${roomId}`);
 
       ws.onopen = () => {
@@ -494,22 +603,35 @@ if (nav.duration > 0) $('s-load').textContent = Math.round(nav.duration) + ' ms'
         $('shr').classList.add('live');
         $('shr').textContent = 'Shared';
         $('ov-conn').style.display = 'none';
-        if (isCreator)
-          ws.send(JSON.stringify({ type: 'snapshot', canvas: base.toDataURL('image/jpeg', 0.85), db }));
+        if (isCreator) {
+          const snap = base.toDataURL('image/jpeg', 0.85);
+          ws.send(JSON.stringify({ type: 'snapshot', canvas: snap, db }));
+          // Flatten local history into the snapshot so every participant's
+          // (baseline, ops) history matches and undo stays consistent
+          const img = new Image();
+          img.onload = () => { baseline = img; baseDb = db ? {...db} : null; ops = []; redoStack = []; syncHistBtns(); };
+          img.src = snap;
+        }
       };
 
       ws.onmessage = e => {
         const data = JSON.parse(e.data);
         if (data.type === 'init') {
+          initQueue = []; // hold ops until the snapshot image has decoded
           const img = new Image();
           img.onload = () => {
-            bx.drawImage(img, 0, 0, WORLD_W, WORLD_H);
-            if (data.db) db = data.db;
+            baseline = img;
+            baseDb = data.db ? {...data.db} : null;
+            ops = []; redoStack = [];
+            repaint();
+            syncHistBtns();
             fitToContent(data.db);
+            const q = initQueue; initQueue = null;
+            q.forEach(handleRemoteOp);
           };
           img.src = data.canvas;
         } else if (data.type === 'draw') {
-          applyOp(data.op);
+          handleRemoteOp(data.op);
         } else if (data.type === 'count') {
           setLiveBadge(data.n);
         } else if (data.type === 'end') {

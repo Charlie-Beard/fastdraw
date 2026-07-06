@@ -8,9 +8,20 @@ A fast, free online drawing app at [fastdraw.online](https://fastdraw.online). N
 - **Shapes** — rectangles and ovals with live preview
 - **Text** — click to place, type, Enter to commit
 - **Eraser** — fixed-radius eraser
+- **Undo / redo** — full history, synced across live sessions
 - **5 colours** — dark, red, blue, green, purple
 - **Save PNG** — auto-crops to drawn content
-- **Live sharing** — share a `?room=` link for real-time collaborative sessions via WebRTC (PeerJS)
+- **Live sharing** — share a `?room=` link for real-time collaborative sessions via PartyKit (WebSockets)
+
+## Keyboard shortcuts
+
+| Key | Action |
+|-----|--------|
+| `P` / `R` / `O` / `T` / `E` | Pen / Rect / Oval / Text / Eraser |
+| `Ctrl/Cmd+Z` | Undo |
+| `Ctrl/Cmd+Shift+Z` or `Ctrl/Cmd+Y` | Redo |
+| `Ctrl/Cmd+S` | Save PNG |
+| `Esc` | Close dialogs / cancel text |
 
 ## Architecture
 
@@ -21,8 +32,9 @@ Single-page app — no build step, no runtime dependencies on initial load.
 | `index.html` | HTML skeleton, meta tags, CSP |
 | `draw.css` | All styles |
 | `draw.js` | All application logic (IIFE) |
+| `server.ts` | PartyKit room server for live sharing |
 
-PeerJS is lazy-loaded from CDN only when Share is clicked.
+The canvas is always reproducible as *baseline + op log*: every committed action (stroke, shape, text, eraser pass, reset) is a plain op object appended to `ops`, and undo/redo pop/push that log and replay it. The same op objects are broadcast over the wire during live sessions.
 
 ## Running locally
 
@@ -42,11 +54,11 @@ Pushes to `main` auto-deploy to [fastdraw.online](https://fastdraw.online) via G
 
 ## Live sharing
 
-The host clicks **Share**, gets a `?room={id}` URL, and shares it. Joiners open the URL and connect directly to the host over WebRTC. The host syncs the current canvas as a JPEG then broadcasts all subsequent drawing operations. Closing the host tab ends the session for all participants.
+The host clicks **Share**, gets a `?room={id}` URL, and shares it. All participants connect to a PartyKit room (`server.ts`) over WebSockets. On session start the host uploads the canvas as a JPEG snapshot; the server hands that snapshot to each joiner and relays all subsequent drawing operations. The host also re-uploads the snapshot (debounced) after activity so late joiners see a current canvas. Undo/redo are broadcast as ops, so history stays consistent across participants.
 
 ## Drawing operation schema
 
-All drawing actions are represented as plain objects — used locally in `applyOp` and sent over WebRTC during live sessions.
+All drawing actions are represented as plain objects — appended to the local history in `commitOp`/`renderOp` and sent over WebSockets during live sessions.
 
 | type | fields |
 |------|--------|
@@ -57,6 +69,7 @@ All drawing actions are represented as plain objects — used locally in `applyO
 | `text` | `x`, `y`, `text`, `fs`, `color` |
 | `eraser` | `pts [{x,y}]`, `r` |
 | `reset` | _(no fields)_ |
+| `undo` / `redo` | _(no fields — pop/push the shared history)_ |
 
 ## How to extend
 

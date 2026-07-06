@@ -57,15 +57,20 @@
     </div>
     <div class="tbdiv"></div>
     <div class="tbg">
-      <button class="sw on" data-c="#1a1a1a"></button>
-      <button class="sw" data-c="#e63946"></button>
-      <button class="sw" data-c="#2563eb"></button>
-      <button class="sw" data-c="#16a34a"></button>
-      <button class="sw" data-c="#9333ea"></button>
+      <button class="sw on" data-c="#1a1a1a" aria-label="Dark"></button>
+      <button class="sw" data-c="#e63946" aria-label="Red"></button>
+      <button class="sw" data-c="#2563eb" aria-label="Blue"></button>
+      <button class="sw" data-c="#16a34a" aria-label="Green"></button>
+      <button class="sw" data-c="#9333ea" aria-label="Purple"></button>
     </div>
     <div class="tb-break"></div>
     <div class="tbg">
-      <button class="btn" data-tool="eraser" title="Eraser"><svg width="20" height="11" viewBox="0 0 20 11" fill="none"><rect width="20" height="11" rx="2.5" fill="#edaaa0"/><path d="M0 2.5A2.5 2.5 0 0 1 2.5 0H7v11H2.5A2.5 2.5 0 0 1 0 8.5Z" fill="#c96b60"/><rect x="7" y="3.5" width="13" height="2" rx="1" fill="#f5c4bc" opacity=".6"/></svg></button>
+      <button class="btn" data-tool="eraser" title="Eraser" aria-label="Eraser"><svg width="20" height="11" viewBox="0 0 20 11" fill="none"><rect width="20" height="11" rx="2.5" fill="#edaaa0"/><path d="M0 2.5A2.5 2.5 0 0 1 2.5 0H7v11H2.5A2.5 2.5 0 0 1 0 8.5Z" fill="#c96b60"/><rect x="7" y="3.5" width="13" height="2" rx="1" fill="#f5c4bc" opacity=".6"/></svg></button>
+    </div>
+    <div class="tbdiv"></div>
+    <div class="tbg">
+      <button class="btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>&#x21B6;</button>
+      <button class="btn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>&#x21B7;</button>
     </div>
     <div class="tbdiv"></div>
     <div class="tbg dim" id="fsz">
@@ -81,7 +86,7 @@
     </div>
   </div>
 
-  <input id="ti" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+  <input id="ti" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="Canvas text">
 
   <!-- Share modal -->
   <div id="sm">
